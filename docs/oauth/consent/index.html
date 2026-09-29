@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lucio AI — Authorize Graphify</title><style>body{background:#101827;color:#f4f6fc;font:16px/1.55 system-ui;margin:0;padding:clamp(20px,8vw,80px)}main{max-width:650px;margin:auto}section{padding:28px;border-radius:16px;background:#1b2940}button{font:inherit;border:0;border-radius:9px;padding:12px 20px;cursor:pointer}button:disabled{opacity:.5}#approve{background:#8ad4c2;color:#10231f}#deny{background:#374a65;color:white}#login{background:white;color:#141d2a}#actions{display:none;gap:12px;margin-top:24px}#details{white-space:pre-wrap;overflow-wrap:anywhere}small{color:#ced7e5}</style></head><body><main><h1>Lucio AI — Graphify access</h1><p>Approve access only if you recognize the requesting app. Your Graphify data stays protected by Supabase authentication and administrator checks.</p><section><h2 id="heading">Checking authorization…</h2><p id="status" role="status" aria-live="polite"></p><p id="details"></p><button id="login" hidden>Sign in with Google</button><div id="actions"><button id="approve">Approve access</button><button id="deny">Deny</button></div><p><small>This page is part of Lucio AI Pages. Never enter your Google Client Secret or Supabase service key here.</small></p></section></main>
+<script type="module">
+import {createClient} from 'https://esm.sh/@supabase/supabase-js@2?bundle';
+const base='https://eyukkmfbdvvvfnjajydf.supabase.co',key='sb_publishable_YHh1SsGHXmzd4g9iMbsCYw_J7tchzev';
+const supabase=createClient(base,key),page=location.origin+location.pathname;
+const authId=new URLSearchParams(location.search).get('authorization_id')||sessionStorage.getItem('lucio_graphify_auth_id');
+const $=id=>document.getElementById(id);
+if(authId)sessionStorage.setItem('lucio_graphify_auth_id',authId);
+function status(s){$('status').textContent=s}function failure(message){$('heading').textContent='Cannot authorize';status(message)}
+$('login').onclick=async()=>{if(!authId){failure('Missing authorization request. Return to ChatGPT and try connecting again.');return;}const {error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:page}});if(error)failure(error.message)};
+async function render(){if(!authId){failure('Missing authorization request. Start connection from ChatGPT.');return}
+try{const {data:{session}}=await supabase.auth.getSession();if(!session){$('heading').textContent='Sign in to continue';status('Use the Google account authorized to access your Graphify knowledge graph.');$('login').hidden=false;return}
+$('login').hidden=true;const {data,error}=await supabase.auth.oauth.getAuthorizationDetails(authId);if(error)throw error;
+if(!data)throw Error('Authorization request not found or expired. Try connecting again from ChatGPT.');
+if(!('authorization_id' in data)){if(data.redirect_url){location.assign(data.redirect_url);return}throw Error('Unexpected authorization response')}
+$('heading').textContent='Approve Graphify access?';
+$('details').textContent='Requesting app: '+(data.client?.name||'Unknown client')+'\nReturn address: '+(data.redirect_uri||'Not provided')+'\nRequested permissions: '+(data.scope||'email');
+status('Signed in as '+session.user.email+'. Check the requesting app before deciding.');
+$('actions').style.display='flex';
+}catch(e){failure(e.message||String(e))}}
+for(const decision of ['approve','deny']){$(decision).onclick=async()=>{$('actions').style.display='none';status('Processing your decision…');try{const {data,error}=decision==='approve'?await supabase.auth.oauth.approveAuthorization(authId):await supabase.auth.oauth.denyAuthorization(authId);if(error)throw error;if(!data?.redirect_url)throw Error('No return URL supplied by authorization server');sessionStorage.removeItem('lucio_graphify_auth_id');location.assign(data.redirect_url)}catch(e){failure(e.message||String(e));$('actions').style.display='flex'}}}
+supabase.auth.onAuthStateChange(()=>setTimeout(render,0));await render();
+</script></body></html>
